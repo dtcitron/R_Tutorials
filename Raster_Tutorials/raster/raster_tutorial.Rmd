@@ -1,0 +1,281 @@
+---
+title: "The Raster Tutorial"
+output: html_notebook
+---
+
+Taken from: https://www.rspatial.org/raster/index.html
+
+
+# What can we do with the `raster` library?
+```{r}
+library(sp) # required package
+library(raster)
+```
+
+# Create a Raster from scratch:
+```{r}
+x <- raster()
+x
+```
+
+Add some parameters to our raster:
+```{r}
+# Defining size and extent of raster
+x <- raster(ncol=36, nrow=18, xmn=-1000, xmx=1000, ymn=-100, ymx=900)
+# What is the resolution?
+res(x)
+```
+We can edit the resolution of our raster:
+```{r}
+# change resolution
+res(x) <- 100
+res(x)
+```
+Similarly, change the number of columns:
+```{r}
+ncol(x) <- 18
+c(ncol(x), res(x))
+```
+We have not yet defined a projection for our raster - 
+```{r}
+projection(x) <- "+proj=utm +zone=48 +datum=WGS84"
+x
+```
+
+## How do we set and reference values?
+
+Here's a raster that's empty of values:
+```{r}
+r <- raster(ncol = 10, nrow = 10)
+ncell(r) # 100
+hasValues(r)
+```
+Add some values (random)
+```{r}
+values(r) <- runif(ncell(r))
+hasValues(r)
+values(r)[1:10]
+plot(r, main='Raster with 100 cells')
+```
+
+What happens to the values when we change the resolution:
+```{r}
+res(r)
+dim(r)
+xmax(r)
+```
+```{r}
+# Change the maximum x coordinate:
+xmax(r) <- 0
+res(r)
+dim(r)
+xmax(r)
+```
+```{r}
+plot(r, main='Raster with 60 cells')
+```
+
+## Load a raster from a file (from the package)
+```{r}
+filename <- system.file("external/test.grd", package="raster")
+r <- raster(filename)
+plot(r, main='RasterLayer from file')
+```
+
+## Create a multilayer RasterLayer object:
+```{r}
+r1 <- r2 <- r3 <- raster(nrow=10, ncol=10)
+# Assign random cell values
+values(r1) <- runif(ncell(r1))
+values(r2) <- runif(ncell(r2))
+values(r3) <- runif(ncell(r3))
+# combine three RasterLayer objects into a RasterStack
+s <- stack(r1, r2, r3)
+s
+```
+
+# Raster Algebra
+
+Ordinary algebraic operators and lobical operators, as well as some functions, can operate on raster values
+
+```{r}
+r <- raster(ncol = 10, nrow = 10)
+values(r) <- 1:ncell(r)
+s <- r + 10
+s <- sqrt(s)
+s <- s*r + 5
+```
+
+Using replacement functions
+```{r}
+s[s < 15] <- 15
+getValues(s)
+```
+
+Combining stack objects:
+```{r}
+r <- raster(ncol = 5, nrow = 5)
+r[] <- 1 # another way to set values
+s <- stack(r, r + 1)
+
+x <- s + s
+head(x[])
+```
+
+What happens when we try to combine multiple stack objects that have different numbers of layers?  Just as with adding vectors of different sizes to one another, we end up recycling the layers over on themselves
+```{r}
+s <- stack(r, r + 1, r + 1)
+q <- stack(r + 3, r + 2, r + 4)
+head(q[])
+
+y <- s + q
+head(y[])
+```
+
+Summary functions acting on RasterLayers also return RasterLayers
+```{r}
+r <- raster(ncol = 5, nrow = 5)
+r[] <- runif(ncell(r))
+
+q <- stack(r, r + 2)
+
+mean(q)
+```
+
+Note that we can also pull out the values as before, and that the mean has been computed across layers
+```{r}
+head(q[])
+head(mean(q)[])
+```
+Use the `cellStats` function to summarize the stats of the layers themselves
+```{r}
+cellStats(q, 'sum')
+cellStats(q, 'max')
+
+```
+
+# High-level methods
+These are functions we can expect to find in dedicated GIS software, for transforming our rasters.
+
+## Modifying a Raster
+Changing spatial extents: 
+  * `crop` - take subset of a larger raster object, where the subset's extent is defined by the extent of another raster object
+  * `trim` - crops a raster by removing the outer rows and columns that only contain `NA`s.  Similarly, `extend` does the opposite and fills out the extent of a `trim`med raster with `NA` space
+  * `merge` - merge two or more raster objects into a single new object.
+  * `aggregate`/`disaggregate` - in the case of `aggregate` need to provide a function specifying what to do with the grouped/ungrouped cell values
+  * `resample` - we may need nearly the same cell size, while shifting cell centers - this function performs nearest neighbors assignments (categorical data) or bilinear interpolation (numerical data)
+  * `focal` - a transformation method that works only for single RasterLayer objects, where I can replace a neighborhood of points with a particular value (this is cool, like a kernel filter)
+  
+An example: we can try decreasing the resolution of our raster by aggregating by a factor of 10 (in both x- and y-dimensions, we can also )
+```{r}
+r <- raster(nrow = 100, ncol = 100)
+r[] <- 1# 1:ncell(r)
+ra <- aggregate(r, 10, fun = sum)
+
+r
+ra
+```
+
+What happens when we try to aggregate up by a factor?
+```{r}
+r <- raster(nrow = 100, ncol = 100)
+r[] <- 1# 1:ncell(r)
+ra <- aggregate(r, 30, fun = sum)
+
+r
+ra
+```
+
+A bunch of examples:
+```{r}
+r <- raster()
+r[] <- 1:ncell(r)
+# aggregate up by a factor of 10
+ra <- aggregate(r, 10) 
+# aggregate up by a factor of 10 in the x direction, factor of 20 in the y direction
+ra <- aggregate(r, c(10, 20)) 
+
+# change extents
+extent(r)
+r1 <- crop(r, extent(-180,0,0,30)) # change
+r2 <- crop(r, extent(-10,180,-20,10))
+
+# merge
+m <- raster::merge(r1, r2, filename='test.grd', overwrite=TRUE)
+plot(m)
+# can compare this to plot(r), and this appears to be a cut-out subset of r, outlined by extents of r1 and r2
+```
+
+## Resampling
+Transfers values between non-matching raster objects, ie if the resolutions of the two objects don't match.  
+Bilinear interpolation is the default method for resolving breaking up pixels, although "ngb" is also an option for using the nearest neighbor
+```{r}
+r <- raster(nrow=3, ncol=3)
+r[] <- 1:ncell(r)
+s <- raster(nrow=10, ncol=10)
+# What we're asking here is to resample the raster r to have the same values as s
+t <- resample(r, s, method='bilinear')
+
+r
+s
+t
+```
+
+
+We can resample up or down; note that resampling doesn't actually conserve numerical counts, so we can't use this trick on, say, the population surfaces.
+```{r}
+r <- raster(nrow=10, ncol=10)
+r[] <- 1:ncell(r)
+s <- raster(nrow=3, ncol=3)
+
+rs <- raster::resample(r, s)
+
+rs
+```
+
+
+## Distance calculations
+
+  * `distance` - computes shortest distance between cells (x, y)
+  * `pointDistance` - computes shortest distance from one point to a group of points
+  * `gridDistance` - computes distance following grid cells that can be traversed
+  
+Refer also to the `gdistance` package for more of these
+
+## Spatial configuration
+  * `adjacency` - which cells are adjacent which other cells (yes!)
+  * `clump`
+  * `boundaries`
+  
+# Cell-level functions
+
+Cells are indexed within each raster, counting left to right from top to bottom.  We can do things like find the row and column corresponding to a particular cell index
+```{r}
+r <- raster(ncol=36, nrow=18)
+r[] <- 1:ncell(r)
+rowFromCell(r, 72)
+colFromCell(r, 72)
+
+xyFromCell(r, 72)
+```
+
+Accessing cell values:
+```{r}
+r <- raster(system.file("external/test.grd", package="raster"))
+v <- getValues(r, 50)
+v
+getValuesBlock(r, 50, 1, 35, 5)
+```
+
+Can also "extract" values given a list of cells:
+```{r}
+# extract from a list of cell indexes
+cells <- cellFromRowCol(r, 50, 35:39)
+cells
+extract(r, cells)
+# or we can extract from a list of cell xy coordinates
+xy <- xyFromCell(r, cells)
+xy
+extract(r, xy)
+```
+

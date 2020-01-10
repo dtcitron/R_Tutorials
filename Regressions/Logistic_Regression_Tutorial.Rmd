@@ -1,0 +1,74 @@
+---
+title: "Regression_Tutorial"
+author: "Daniel T. Citron"
+date: "8/13/2018"
+output: html_document
+---
+# Logistic Regression Tutorial
+In which I finally learn how to implement logistic regression - this will include single variable binomial logit model; multivariable binomial logit model; multinomial logit model.
+
+Logit model and logistic regression can be used interchangeably(?)
+
+```{r Read in Libraries}
+library(ggplot2)
+library(foreign)
+library(nnet)
+library(reshape2)
+library(data.table)
+```
+
+## Single Variable
+Tutorial data taken from Wikipedia: https://en.wikipedia.org/wiki/Logistic_regression
+
+Can we predict how many hours 
+
+```{r Logistic Regression with Single Covariate}
+passing.test.scores = data.table(
+  hours = c(0.50,	0.75,	1.00,	1.25,	1.50,	1.75,	1.75,	2.00,	2.25,	2.50,	2.75,	3.00,	3.25,	3.50,	4.00,	4.25,	4.50,	4.75,	5.00,	5.5),
+  pass = c(0, 0,	0, 0,	0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1)
+  )
+mylogit <- glm(pass ~ hours, data = passing.test.scores, family = "binomial")
+summary(mylogit)
+```
+
+Since we have one dependent variable, we can make a plot:
+```{r Plot Probability vs. Hours studied}
+x <- seq(0,6,.1)
+plot(passing.test.scores$hours, passing.test.scores$pass)
+lines(x, 1/(1 + exp(-(mylogit$coefficients[[1]] + mylogit$coefficients[[2]]*x))))
+```
+
+
+## Multiple Variable
+Tutorial data taken from UCLA: https://stats.idre.ucla.edu/r/dae/logit-regression/
+
+This data set has a binary response (`admit`) that says whether or not someone got admitted.  There are three dependent covariates: `gpa`, `gre` score, and `rank`.  `gpa` and `gre` will be treated as continuous, but the `rank` variable will be treated as discrete.
+```{r Logistic Regression with Multiple Covariates}
+mydata <- read.csv("https://stats.idre.ucla.edu/stat/data/binary.csv")
+summary(mydata)
+```
+
+Logistic regression (logit model) is one option, but the probit model is also an option - it's a similarly-shaped log-odds function.
+
+We first need to convert the `rank` variable to a `factor` to reflect its categorical status:
+```{r Using a Logit Model}
+mydata$rank <- factor(mydata$rank)
+mylogit <- glm(admit ~ gre + gpa + rank, family = "binomial", data = mydata)
+summary(mylogit)
+```
+
+From the output, we can see that lower rank decreases one's probability of admission. GPA is a positive predictor of admission, and GRE score is a very weakly positive predictor of admission.
+
+Use the `confint` function to obtain confidence intervals for the coefficient estimates.
+```{r}
+# using profiled log-likelihood
+confint(mylogit)
+# using Standard Errors
+confint.default(mylogit)
+```
+
+```{r}
+AIC(mylogit)
+```
+
+One small problem: 

@@ -1,0 +1,277 @@
+---
+title: "Regression_Tutorial"
+author: "Daniel T. Citron"
+date: "8/13/2018"
+output: html_document
+---
+# Logistic Regression Tutorial
+In which I finally learn how to implement different types of regression models in R - this will include single variable binomial logit model; multivariable binomial logit model; multinomial logit model.
+
+Logit model and logistic regression can be used interchangeably(?)
+
+```{r Read in Libraries}
+library(ggplot2)
+library(foreign)
+library(nnet)
+library(reshape2)
+library(data.table)
+```
+
+## Single Variable
+Tutorial data taken from Wikipedia: https://en.wikipedia.org/wiki/Logistic_regression
+
+Can we predict how many hours 
+
+```{r Logistic Regression with Single Covariate}
+passing.test.scores = data.table(
+  hours = c(0.50,	0.75,	1.00,	1.25,	1.50,	1.75,	1.75,	2.00,	2.25,	2.50,	2.75,	3.00,	3.25,	3.50,	4.00,	4.25,	4.50,	4.75,	5.00,	5.5),
+  pass = c(0, 0,	0, 0,	0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1)
+  )
+mylogit <- glm(pass ~ hours, data = passing.test.scores, family = "binomial")
+summary(mylogit)
+```
+
+Since we have one dependent variable, we can make a plot:
+```{r Plot Probability vs. Hours studied}
+x <- seq(0,6,.1)
+plot(passing.test.scores$hours, passing.test.scores$pass)
+lines(x, 1/(1 + exp(-(mylogit$coefficients[[1]] + mylogit$coefficients[[2]]*x))))
+```
+
+
+## Multiple Variable
+Tutorial data taken from UCLA: https://stats.idre.ucla.edu/r/dae/logit-regression/
+
+This data set has a binary response (`admit`) that says whether or not someone got admitted.  There are three dependent covariates: `gpa`, `gre` score, and `rank`.  `gpa` and `gre` will be treated as continuous, but the `rank` variable will be treated as discrete.
+```{r Logistic Regression with Multiple Covariates}
+mydata <- read.csv("https://stats.idre.ucla.edu/stat/data/binary.csv")
+summary(mydata)
+```
+
+Logistic regression (logit model) is one option, but the probit model is also an option - it's a similarly-shaped log-odds function.
+
+We first need to convert the `rank` variable to a `factor` to reflect its categorical status:
+```{r Using a Logit Model}
+mydata$rank <- factor(mydata$rank)
+mylogit <- glm(admit ~ gre + gpa + rank, family = "binomial", data = mydata)
+summary(mylogit)
+```
+
+From the output, we can see that lower rank decreases one's probability of admission. GPA is a positive predictor of admission, and GRE score is a very weakly positive predictor of admission.
+
+Use the `confint` function to obtain confidence intervals for the coefficient estimates.
+```{r}
+# using profiled log-likelihood
+confint(mylogit)
+# using Standard Errors
+confint.default(mylogit)
+```
+
+```{r}
+AIC(mylogit)
+```
+
+Note that in both of the previous examples we are modeling a binomial outcome.
+
+Can we say anything about the prediction that our model makes?  The fitted values give us $\mathbb{P}(admit=1)$.  The underlying probability model is 
+$$
+\mathbb{P}(admit=1) = \frac{\exp(\vec{x}\cdot\vec{\beta})}{1 + \exp(\vec{x}\cdot\vec{\beta})}
+$$
+
+```{r}
+# For rank 1, we have a good match
+
+mylogit$fitted.values[[3]]
+
+t <- exp(mylogit$coefficients[[1]] + 
+           mylogit$coefficients[[2]]*mydata[[3,2]] + 
+           mylogit$coefficients[[3]]*mydata[[3,3]])
+t/(1 + t)
+
+# And for rank 2
+mylogit$fitted.values[[6]]
+
+t <- exp(mylogit$coefficients[[1]] + 
+           mylogit$coefficients[[2]]*mydata[[6,2]] + 
+           mylogit$coefficients[[3]]*mydata[[6,3]] +
+           mylogit$coefficients[[4]] )
+t/(1+t)
+
+# And for rank 3
+
+mylogit$fitted.values[[2]]
+
+t <- exp(mylogit$coefficients[[1]] + 
+           mylogit$coefficients[[2]]*mydata[[2,2]] + 
+           mylogit$coefficients[[3]]*mydata[[2,3]] +
+           mylogit$coefficients[[5]] )
+t/(1+t)
+
+# And for rank 4
+mylogit$fitted.values[[4]]
+
+t <- exp(mylogit$coefficients[[1]] + 
+           mylogit$coefficients[[2]]*mydata[[4,2]] + 
+           mylogit$coefficients[[3]]*mydata[[4,3]] +
+           mylogit$coefficients[[6]] )
+t/(1+t)
+
+```
+
+
+
+## Multinomial Logistic Regression
+https://stats.idre.ucla.edu/r/dae/multinomial-logistic-regression/
+
+Suppose someone needs to choose between one of several possible outcomes - which job one takes, as a function of SES.  The `table` function prints out data sorted by different categories - the number of people belonging to each SES who enroll in each category of job.
+
+```{r}
+ml <- read.dta("https://stats.idre.ucla.edu/stat/data/hsbdemo.dta")
+with(ml, table(ses, prog))
+with(ml, do.call(rbind, tapply(write, prog, function(x) c(M = mean(x), SD = sd(x)))))
+#summary(ml)
+```
+
+Use the `relevel` function to specify the baseline for a categorical variable
+```{r}
+ml$prog2 <- relevel(ml$prog, ref = "academic")
+```
+
+Run the regression as a function of `ses`, a categorical variable, and `write`, a writing test score:
+```{r}
+test <- multinom(prog2 ~ ses + write, data = ml, model = TRUE)
+summary(test)
+```
+
+Model summary output includes a block of coefficients and a block of standard errors - each block has a row of values corresponding to a model equation:
+
+$$
+\ln \left( \frac{\mathbb{P}(prog=general)}{\mathbb{P}(prog=academic)} \right) = b_{10} + b_{11}\mathbb{1}_{(ses = 2)} + b_{12} \mathbb{1}_{(ses = 3)} + b_{13} write 
+$$
+Looking at coefficient $b_{12} = -1.163$ - this turns out to be really complicated to interpret.  Essentially, we are looking for the change in log odds of being in the general program vs. being in the academic program.  Where `general` and `seshigh` meet - we see that moving from `seslow` to `seshigh` results in a decrease to the log odds of 1.163. 
+
+Similarly, the log odds of being in the general porgram vs. the academic program decrease by .533 if moving from `seslow` to `sesmiddle`
+
+Looking at coefficient $b_{13} = -.058$ - a single unit increase in writing test score decreases the log odds of being in the general program by .058.
+
+$$
+\ln \left( \frac{\mathbb{P}(prog=vocation)}{\mathbb{P}(prog=academic)} \right) = b_{20} + b_{21}\mathbb{1}_{(ses = 2)} + b_{22} \mathbb{1}_{(ses = 3)} + b_{23} write
+$$
+
+Essentially what we've done is model the ratios of probabilities of choosing one outcome over another outcome.
+
+Extract coefficients and exponentiate - this gives us the changes to relative risk ratios for each of the covariates.  Below, when the variable `write` increases by 1 unit, we change the relative risk ratio of being in the general program vs. academic program by a factor of 0.94.  Similarly, if we switch from `ses=low` to `seshigh` then the relative risk ratio of being general vs. academic program is 0.31.
+```{r}
+exp(coef(test))
+```
+
+And what about predictions?  We use the `fitted` function to show the predicted probabilities for each outcome based on our data:
+```{r Model Fitted Values}
+head(pp <- fitted(test))
+head(rowSums(pp))
+#head(test$fitted.values)
+```
+Note that each row is normalized - each row gives the probability distribution across different categories.
+
+
+But this doesn't let us extend to making predictions based on new data.  To do this we need to use the `nnet` version of `predict`.  We specify `type="probs"` to indicate we want probability distributions as our outputs.
+
+In the case of predicting on our old data, we should obtain the fitted values from above
+```{r Multinomial Model Predictions}
+head(predict(test, newdata = ml, type = "probs"))
+```
+
+We can also make up some new data and use the `predict` function to predict something new.
+```{r}
+dses <- data.table(ses = c("low", "middle", "high"), write = mean(ml$write))
+predict(test, newdata = dses, "probs")
+```
+
+
+
+## Binomial Logistic Regression
+Consider the area-level data of whether or not people have traveled in the previous 8 weeks: for each area, I count a certain number of attempts (people surveyed `n`) and successes (people who report traveling `t`), as well as include some covariates.  The covariates allow me to group together which areas are similar to one another in a quantitative way.  What I'd like to be able to do is estimate `p`, the probability that a person living at each area reports travel.  Using a model to make these estimates is useful here because there are some areas that have terrible survey coverage. (eg If I survey 0 people and report 0 travel events in an area, how else can I estimate what the probability of traveling from that area is?)
+
+Want to use a binomial logistic regression model for this.  To do this, I will first examine the example illustrated at : http://data.princeton.edu/R/glms.html
+
+```{r Load data set}
+cuse <- read.table("http://data.princeton.edu/wws509/datasets/cuse.dat", header=TRUE)
+cuse <- as.data.table(cuse)
+attach(cuse)
+head(cuse)
+```
+
+This data set counts the number of people in each category who use and do not use contraceptives, broken down by other variables such as age, education level, and desire for more children.  We will use R's general linearized modeling tool to perform a binomial logistic regression.
+
+```{r GLM fit}
+lrfit <- glm( cbind(using, notUsing) ~ age + education + wantsMore,
+     data = cuse,
+     family = binomial # here's where the type of model is specified
+     )
+```
+
+Important to note that this is the same as fitting a logistic model where each row in my data set is an individual person (each area has `n` rows in the data table), except we have summed over all people in the same area.
+
+Model 1, without summing over all individuals
+$$
+logit(p) = \beta_0 + \beta_1 \mathbb{1}_{areaId} + \beta_2 cov_2 \ldots
+$$
+Model 2, with summing over all individuals, where the sum over the $\beta_1$ term is absorbed in the new intercept $\beta_0'$-
+$$
+logit(p) = \beta_0' + \beta_1 \mathbb{1}_{areaId} + \beta_2 cov_2 \ldots
+$$
+Returning to the model:
+```{r}
+lrfit
+```
+
+How good of a model fit is this? It turns out that the residual deviance is distributed according to a chi-squared distribution.  We can perform a chi-squared test on the residual deviance with 10 residual dof.  This is the same as determining a p-value: what's the probability that the residual deviance was found by chance?  We find that the p-value is very significant:
+```{r Chi-Square test of residual deviance}
+resid.dev = 29.92
+dof = 10
+1-pchisq(29.92, 10)
+```
+
+We can try to correct this by adding interaction terms - most people who are older are over the idea of having more children, so we can build in some new terms that show how age and wanting more children together affect the output:
+```{r Define new indicator variables}
+attach(cuse)
+noMore <- wantsMore == "no"
+hiEduc <- education == "high"
+
+cuse$noMore = 0;
+cuse$noMore[wantsMore == "no"] <- 1
+cuse$hiEduc = 0;
+cuse$hiEduc[education=="high"] <- 1
+
+# So instead we can add
+```
+Simply adding the new variables does nothing to improve the model
+```{r}
+glm( cbind(using,notUsing) ~ age + hiEduc + noMore, family=binomial)
+```
+so instead we can add some mixing in our model:
+```{r}
+lrfit <- glm( cbind(using,notUsing) ~ age*noMore + hiEduc, family=binomial)
+lrfit
+```
+Note the reduction in both residual dof and residual deviance.  Note also the AIC improvement.  We can now perform another chi-squared test
+```{r}
+1 - pchisq(12.63, 7)
+```
+
+Now let's look at the predictions that this model makes:
+```{r}
+cuse$predict <- lrfit$fitted.values
+cuse$ratio <- cuse$using/(cuse$using + cuse$notUsing)
+
+cuse
+```
+Why isn't the predict function working?  It's because it predicts the log-odds according to the logistic model. Compare:
+```{r}
+cbind(predict(lrfit, data = cuse), 
+  lrfit$fitted.values, 
+  exp(predict(lrfit, data = cuse))/(1 + exp(predict(lrfit, data = cuse)))
+)
+
+```
+

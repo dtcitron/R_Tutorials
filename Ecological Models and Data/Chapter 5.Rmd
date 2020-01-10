@@ -1,0 +1,98 @@
+---
+title: "Ecological Models and Data in R"
+output: html_notebook
+---
+```{r include = FALSE}
+install.packages("numDeriv")
+install.packages("bbmle")
+library(stats4)
+library(bbmle)
+```
+
+#Chapter 5
+
+##5.2.1 Simple examples
+
+First example: fit a linear model with normally-distributed errors
+```{r}
+x = 1:20
+a = 2
+b = 1
+```
+
+Deterministic part of the model
+```{r}
+y_det = a*x + b
+```
+
+Add noise to the model - pick 20 random, normally-distribute deviates with mean equal to the deterministic equation and standard deviation = 2
+```{r}
+# Simulate, by generating a noisy data set
+y_noise = rnorm(20, mean = y_det, sd = 2)
+# Alternatively (but less generalizably),
+# y_noise = y_det + rnorm(20, sd = 2)
+```
+
+Fit the linear model
+```{r}
+lm(y_noise~x)
+```
+
+
+Second example: fit a hyperbolic model with negative binomially-distributed errors
+```{r}
+a = 20
+b = 1
+k = 5
+```
+
+Generate predictor variable x:
+```{r}
+x = runif(50, min = 0, max = 5)
+```
+
+Generate deterministic mean and the noisy data
+```{r}
+y_det = a*b/(b + x)
+# Simulate, by generating a noisy data set
+y = rnbinom(50, mu = y_det, size = k)
+```
+
+Fit the model
+```{r}
+m = mle2(y_det ~ dnbinom(mu = a * b * x/(b + x), size = k), start = list(a = 15, b = 1, k = 5))
+```
+
+## 5.3 Power Analysis
+Finding out the (frequentist) statistical power, the probability of failing to reject the null hypothesis when it is false.
+
+"How do the quality and quantity of my data and the true properties (parameters) of my ecological system affect the quality of my answers to my questions about ecological systems?"
+
+Estimate the statistical power of detecting a linear trend as a function of sample size.  Simulate to determine whether it is likely that we can reject the null hypothesis in a single "experiment."
+```{r}
+N = 10
+x = seq(1,20,20./N)
+a = 2
+b = 1
+y_det = a + b * x
+y_noise = rnorm(N, mean = y_det, sd = 2)
+m = lm(y_noise ~ x)
+coef(summary(m))["x", "Pr(>|t|)"]
+```
+
+Repeat 400 times and see how many times we can reject our hypothesis:
+```{r}
+nsim = 400
+pval = numeric(nsim)
+for (i in 1:nsim){
+  y_det = a*x + b
+  y_noise = rnorm(N, mean = y_det, sd = 2)
+  m = lm(y_noise ~ x)
+  pval[i] = coef(summary(m))["x", "Pr(>|t|)"]
+}
+```
+And calculate the power:
+```{r}
+sum(pval < 0.05)/nsim
+```
+
